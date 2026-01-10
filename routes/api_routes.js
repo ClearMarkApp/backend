@@ -6,16 +6,12 @@ const getControllers = require('../controllers/api_GET_controllers');
 // GET routes
 // Get course details with assignments and users
 router.get('/courses/:courseId', getControllers.getCourseDetail);
-
 // Get assignment details
 router.get('/assignments/:assignmentId', getControllers.getAssignmentInfo);
-
 // Get student submission with grades
 router.get('/assignments/:assignmentId/students/:studentId/submission', getControllers.getUserSubmission);
-
 // AI grade a student's submission
 router.get('/assignments/:assignmentId/user/:userId/ai-grading', getControllers.aiGradeSubmission);
-
 // Check if a user exists by email
 router.get("/users/check-exists/:email", getControllers.checkUserExists);
 
