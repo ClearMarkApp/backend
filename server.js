@@ -1,5 +1,6 @@
 require('dotenv').config();
 const express = require('express');
+const apiRoutes = require('./routes/api_routes');
 
 // app initialization
 const app = express();
@@ -10,6 +11,11 @@ app.use(express.json());
 
 // API Key Authentication
 const authenticateApiKey = (req, res, next) => {
+  // Skip auth for health check
+  if (req.path === '/health') {
+    return next();
+  }
+  
   const apiKey = req.headers['x-api-key'];
   
   if (!apiKey) {
@@ -30,6 +36,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+app.use('/api', apiRoutes);
 
 // begin listening to port / start server
 app.listen(port, () => {
