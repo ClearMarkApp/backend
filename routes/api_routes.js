@@ -23,3 +23,14 @@ router.delete('/courses/:courseId', deleteControllers.deleteCourse);
 router.delete('/enrollments/:enrollmentId', deleteControllers.deleteEnrollment);
 // Delete a question
 router.delete('/questions/:questionId', deleteControllers.deleteQuestion);
+
+// PUT routes
+
+// Update grading guidelines for an assignment
+router.put("/assignments/grading-guidelines", putControllers.updateGradingGuidelines);
+// Update question on an assignment
+router.put("/questions", putControllers.updateQuestion);
+// Update grade for a student's submission
+router.put("/grades", putControllers.updateGrade);
+// Update user role in a course
+router.put("/enrollments/role", putControllers.updateRole);
