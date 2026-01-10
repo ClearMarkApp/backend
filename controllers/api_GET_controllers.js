@@ -1,4 +1,16 @@
 const pool = require('../services/config');
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { gradeSubmission } = require('../services/gemini');
+
+// R2 Client configuration (for fetching PDFs)
+const r2Client = new S3Client({
+  region: 'auto',
+  endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID,
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+  },
+});
 
 /**
  * CourseDetailView - GET /api/courses/:courseId
@@ -124,7 +136,10 @@ const getAssignmentInfo = async (req, res, next) => {
       ...q,
       maxPoints: parseFloat(q.maxPoints)
     }));
-    
+
+    // Calculate total assignment marks
+    const totalAssignmentMarks = questions.reduce((sum, q) => sum + q.maxPoints, 0);
+
     // Get users in the course
     const usersQuery = `
       SELECT 
@@ -205,6 +220,7 @@ const getAssignmentInfo = async (req, res, next) => {
       submissionType: assignment.submissionType,
       dueDate: assignment.dueDate,
       gradingGuidelines: assignment.gradingGuidelines,
+      totalAssignmentMarks: totalAssignmentMarks,
       questions: questions,
       usersById: usersById,
       submissionsByStudentId: submissionsByStudentId,
@@ -302,8 +318,163 @@ const getUserSubmission = async (req, res, next) => {
   }
 };
 
+/**
+ * AIGradeSubmission - GET /api/assignments/:assignmentId/user/:userId/ai-grading
+ * Use AI to grade a student's submission and update the database
+ */
+const aiGradeSubmission = async (req, res, next) => {
+  const client = await pool.connect();
+
+  try {
+    const { assignmentId, userId } = req.params;
+
+    // Get assignment with grading guidelines
+    const assignmentQuery = `
+      SELECT
+        assignment_id as id,
+        title,
+        grading_guidelines as "gradingGuidelines"
+      FROM assignments
+      WHERE assignment_id = $1
+    `;
+    const assignmentResult = await client.query(assignmentQuery, [assignmentId]);
+
+    if (assignmentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+
+    const assignment = assignmentResult.rows[0];
+
+    // Get questions for this assignment
+    const questionsQuery = `
+      SELECT
+        question_id as id,
+        question_number as "questionNumber",
+        question_text as "questionText",
+        max_points as "maxPoints",
+        solution_key as "solutionKey"
+      FROM questions
+      WHERE assignment_id = $1
+      ORDER BY question_number
+    `;
+    const questionsResult = await client.query(questionsQuery, [assignmentId]);
+
+    if (questionsResult.rows.length === 0) {
+      return res.status(400).json({ error: 'No questions found for this assignment' });
+    }
+
+    const questions = questionsResult.rows.map(q => ({
+      ...q,
+      maxPoints: parseFloat(q.maxPoints)
+    }));
+
+    // Get the user's latest submission
+    const submissionQuery = `
+      SELECT
+        submission_id as id,
+        file_key as "fileKey"
+      FROM submissions
+      WHERE assignment_id = $1 AND student_id = $2
+      ORDER BY created_at DESC
+      LIMIT 1
+    `;
+    const submissionResult = await client.query(submissionQuery, [assignmentId, userId]);
+
+    if (submissionResult.rows.length === 0) {
+      return res.status(404).json({ error: 'No submission found for this user' });
+    }
+
+    const submission = submissionResult.rows[0];
+
+    if (!submission.fileKey) {
+      return res.status(400).json({ error: 'Submission has no file' });
+    }
+
+    // Fetch the PDF from R2
+    const getCommand = new GetObjectCommand({
+      Bucket: process.env.R2_BUCKET_NAME,
+      Key: submission.fileKey,
+    });
+
+    const r2Response = await r2Client.send(getCommand);
+
+    // Convert stream to buffer
+    const chunks = [];
+    for await (const chunk of r2Response.Body) {
+      chunks.push(chunk);
+    }
+    const pdfBuffer = Buffer.concat(chunks);
+
+    // Call Gemini AI to grade the submission
+    const gradingResults = await gradeSubmission(
+      pdfBuffer,
+      questions,
+      assignment.gradingGuidelines
+    );
+
+    // Begin transaction to update grades
+    await client.query('BEGIN');
+
+    // Delete existing grades for this submission
+    await client.query(
+      `DELETE FROM grades WHERE submission_id = $1`,
+      [submission.id]
+    );
+
+    // Insert new grades for each question
+    for (const gradeItem of gradingResults.grades) {
+      await client.query(
+        `
+        INSERT INTO grades (submission_id, question_id, grade, feedback)
+        VALUES ($1, $2, $3, $4)
+        `,
+        [submission.id, gradeItem.question_id, gradeItem.grade, gradeItem.feedback]
+      );
+    }
+
+    // Update submission status to GRADED
+    await client.query(
+      `UPDATE submissions SET status = 'GRADED' WHERE submission_id = $1`,
+      [submission.id]
+    );
+
+    await client.query('COMMIT');
+
+    res.json({ message: 'AI grading completed successfully' });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('AI grading error:', error);
+    next(error);
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * CheckUserExists - GET /api/users/check-exists/:email
+ * Check if a user exists by email
+ */
+const checkUserExists = async (req, res, next) => {
+  try {
+    const { email } = req.params;
+
+    const query = `
+      SELECT EXISTS(SELECT 1 FROM users WHERE email = $1) as exists
+    `;
+    const result = await pool.query(query, [email]);
+
+    res.json({
+      exists: result.rows[0].exists
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getCourseDetail,
   getAssignmentInfo,
-  getUserSubmission
+  getUserSubmission,
+  aiGradeSubmission,
+  checkUserExists
 };
