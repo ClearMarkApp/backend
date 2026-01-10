@@ -16,6 +16,10 @@ router.get('/assignments/:assignmentId/students/:studentId/submission', getContr
 // AI grade a student's submission
 router.get('/assignments/:assignmentId/user/:userId/ai-grading', getControllers.aiGradeSubmission);
 
+// Check if a user exists by email
+router.get("/users/check-exists/:email", getControllers.checkUserExists);
+
+
 // DELETE routes
 
 // Delete a course
