@@ -31,11 +31,11 @@ const getCourseDetail = async (req, res, next) => {
         a.due_date as "dueDate",
         a.created_at as "createdAt",
         COUNT(DISTINCT s.submission_id) as "numSubmitted",
-        COUNT(DISTINCT ce.user_id) FILTER (WHERE u.account_type = 'STUDENT') as "totalStudents"
+        COUNT(DISTINCT ce.user_id) FILTER (WHERE u.account_type = 'STUDENT' AND ce.role = 'STUDENT') as "totalStudents"
       FROM assignments a
       LEFT JOIN submissions s ON a.assignment_id = s.assignment_id
       LEFT JOIN course_enrollments ce ON a.course_id = ce.course_id
-      LEFT JOIN users u ON ce.user_id = u.user_id AND u.account_type = 'STUDENT'
+      LEFT JOIN users u ON ce.user_id = u.user_id AND u.account_type = 'STUDENT' AND ce.role = 'STUDENT'
       WHERE a.course_id = $1
       GROUP BY a.assignment_id, a.title, a.submission_type, a.due_date, a.created_at
       ORDER BY a.due_date DESC NULLS LAST, a.created_at DESC
