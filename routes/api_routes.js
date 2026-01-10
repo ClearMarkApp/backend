@@ -13,7 +13,8 @@ router.get('/assignments/:assignmentId', getControllers.getAssignmentInfo);
 // Get student submission with grades
 router.get('/assignments/:assignmentId/students/:studentId/submission', getControllers.getUserSubmission);
 
-module.exports = router;
+// AI grade a student's submission
+router.get('/assignments/:assignmentId/user/:userId/ai-grading', getControllers.aiGradeSubmission);
 
 // DELETE routes
 
@@ -34,3 +35,5 @@ router.put("/questions", putControllers.updateQuestion);
 router.put("/grades", putControllers.updateGrade);
 // Update user role in a course
 router.put("/enrollments/role", putControllers.updateRole);
+
+module.exports = router;
