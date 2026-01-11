@@ -451,6 +451,131 @@ const aiGradeSubmission = async (req, res, next) => {
 };
 
 /**
+ * ExportAssignmentCsv - GET /api/assignments/:assignmentId/export
+ * Export assignment submissions and grades as CSV
+ */
+const exportAssignmentCsv = async (req, res, next) => {
+  try {
+    const { assignmentId } = req.params;
+
+    // Get assignment title
+    const assignmentQuery = `
+      SELECT title
+      FROM assignments
+      WHERE assignment_id = $1
+    `;
+    const assignmentResult = await pool.query(assignmentQuery, [assignmentId]);
+
+    if (assignmentResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Assignment not found' });
+    }
+
+    const assignmentTitle = assignmentResult.rows[0].title;
+
+    // Get all questions for this assignment (ordered by question_id)
+    const questionsQuery = `
+      SELECT
+        question_id,
+        question_number
+      FROM questions
+      WHERE assignment_id = $1
+      ORDER BY question_id
+    `;
+    const questionsResult = await pool.query(questionsQuery, [assignmentId]);
+    const questions = questionsResult.rows;
+
+    // Get all submissions with student info
+    const submissionsQuery = `
+      SELECT
+        s.submission_id,
+        u.email,
+        u.first_name,
+        u.last_name
+      FROM submissions s
+      INNER JOIN users u ON s.student_id = u.user_id
+      WHERE s.assignment_id = $1
+      ORDER BY u.last_name, u.first_name
+    `;
+    const submissionsResult = await pool.query(submissionsQuery, [assignmentId]);
+    const submissions = submissionsResult.rows;
+
+    // Get all grades for this assignment's submissions
+    const gradesQuery = `
+      SELECT
+        g.submission_id,
+        g.question_id,
+        g.grade,
+        g.feedback
+      FROM grades g
+      INNER JOIN submissions s ON g.submission_id = s.submission_id
+      WHERE s.assignment_id = $1
+    `;
+    const gradesResult = await pool.query(gradesQuery, [assignmentId]);
+
+    // Build a lookup map: submission_id -> question_id -> {grade, feedback}
+    const gradesMap = {};
+    gradesResult.rows.forEach(g => {
+      if (!gradesMap[g.submission_id]) {
+        gradesMap[g.submission_id] = {};
+      }
+      gradesMap[g.submission_id][g.question_id] = {
+        grade: g.grade,
+        feedback: g.feedback
+      };
+    });
+
+    // Build CSV header
+    const headers = ['Submission ID', 'Student Email', 'Student Name'];
+    questions.forEach(q => {
+      headers.push(`Q${q.question_number} Grade`);
+      headers.push(`Q${q.question_number} Feedback`);
+    });
+
+    // Helper function to escape CSV fields
+    const escapeCsvField = (field) => {
+      if (field === null || field === undefined) {
+        return '';
+      }
+      const str = String(field);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Build CSV rows
+    const rows = [];
+    rows.push(headers.map(escapeCsvField).join(','));
+
+    submissions.forEach(sub => {
+      const row = [
+        sub.submission_id,
+        sub.email,
+        `${sub.first_name} ${sub.last_name}`
+      ];
+
+      questions.forEach(q => {
+        const gradeData = gradesMap[sub.submission_id]?.[q.question_id];
+        row.push(gradeData?.grade ?? '');
+        row.push(gradeData?.feedback ?? '');
+      });
+
+      rows.push(row.map(escapeCsvField).join(','));
+    });
+
+    const csvContent = rows.join('\n');
+
+    // Set headers for CSV download
+    const safeTitle = assignmentTitle.replace(/[^a-zA-Z0-9]/g, '_');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}_export.csv"`);
+    res.send(csvContent);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
  * CheckUserExists - GET /api/users/check-exists/:email
  * Check if a user exists by email
  */
@@ -476,5 +601,6 @@ module.exports = {
   getAssignmentInfo,
   getUserSubmission,
   aiGradeSubmission,
+  exportAssignmentCsv,
   checkUserExists
 };

@@ -28,6 +28,8 @@ router.get('/assignments/:assignmentId', getControllers.getAssignmentInfo);
 router.get('/assignments/:assignmentId/students/:studentId/submission', getControllers.getUserSubmission);
 // AI grade a student's submission
 router.get('/assignments/:assignmentId/user/:userId/ai-grading', getControllers.aiGradeSubmission);
+// Export assignment submissions and grades as CSV
+router.get('/assignments/:assignmentId/export', getControllers.exportAssignmentCsv);
 // Check if a user exists by email
 router.get("/users/check-exists/:email", getControllers.checkUserExists);
 
