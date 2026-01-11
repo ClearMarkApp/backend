@@ -65,8 +65,6 @@ router.post("/courses", postControllers.createCourse);
 router.post("/enrollments", postControllers.createEnrollment);
 // Create a new user
 router.post("/users", postControllers.createUser);
-// Check if a user exists by email
-router.get("/users/check-exists/:email", getControllers.checkUserExists);
 // Upload PDF submission
 router.post("/users/:userId/assignments/:assignmentId/upload", (req, res, next) => {
   upload.single('file')(req, res, (err) => {
