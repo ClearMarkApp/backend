@@ -240,12 +240,8 @@ const postUserClasses = async (req, res, next) => {
         FROM users
         WHERE email = $1
     `;
-    // console.log('2. About to query database with email:', email);
 
     const userResult = await pool.query(userQuery, [email]);
-    
-    // console.log('3. Query result:', userResult);
-    // console.log('4. Rows:', userResult.rows);
 
     if(userResult.rows.length === 0){
         return res.status(400).json({ error: 'User not found' });

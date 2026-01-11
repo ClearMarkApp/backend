@@ -7,8 +7,6 @@ const pool = require('../services/config');
 const deleteCourse = async (req, res, next) => {
   const { courseId } = req.params;
 
-  console.log('Attempting to delete course:', courseId);
-
   try {
 
     // Delete the enrollment
@@ -40,7 +38,6 @@ const deleteEnrollment = async (req, res, next) => {
   try {
     
     const { enrollmentId } = req.params;
-    console.log('Attempting to delete enrollment:', enrollmentId);
     
     // Check if enrollment exists and get details
     const checkQuery = `
